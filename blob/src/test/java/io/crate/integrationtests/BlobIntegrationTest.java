@@ -1,6 +1,9 @@
 package io.crate.integrationtests;
 
 
+import io.crate.blob.BlobListener;
+import io.crate.blob.v2.BlobIndices;
+import io.crate.blob.v2.BlobShard;
 import io.crate.rest.CrateRestFilter;
 import io.crate.test.integration.CrateIntegrationTest;
 import org.apache.commons.lang3.StringUtils;
@@ -11,12 +14,19 @@ import org.apache.http.entity.ContentType;
 import org.apache.http.entity.StringEntity;
 import org.apache.http.message.BasicHeader;
 import org.apache.http.util.EntityUtils;
+import org.elasticsearch.cluster.metadata.IndexMetaData;
 import org.elasticsearch.common.settings.ImmutableSettings;
 import org.elasticsearch.common.settings.Settings;
 import org.junit.Test;
 
 import java.io.IOException;
 import java.util.Locale;
+
+import static org.hamcrest.Matchers.notNullValue;
+import static org.hamcrest.core.Is.is;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 
 @CrateIntegrationTest.ClusterScope(scope = CrateIntegrationTest.Scope.SUITE, numNodes = 2)
 public class BlobIntegrationTest extends BlobHttpIntegrationTest {
@@ -233,5 +243,44 @@ public class BlobIntegrationTest extends BlobHttpIntegrationTest {
         assertEquals("Created", res.getStatusLine().getReasonPhrase());
         assertEquals("{\"_index\":\"test_no_blobs\",\"_type\":\"default\",\"_id\":\"1\",\"_version\":1,\"created\":true}",
                 EntityUtils.toString(res.getEntity()));
+    }
+
+    @Test
+    public void testBlobListenersExecuted() throws Exception {
+        final String INDEX = "listener_t";
+
+        BlobIndices blobIndices = cluster().getInstance(BlobIndices.class);
+
+        Settings indexSettings = ImmutableSettings.builder()
+                .put(IndexMetaData.SETTING_NUMBER_OF_REPLICAS, 0)
+                .put(IndexMetaData.SETTING_NUMBER_OF_SHARDS, 1)
+                .build();
+        blobIndices.createBlobTable(INDEX, indexSettings).get();
+
+        BlobShard shard = null;
+        for (BlobIndices indices : cluster().getInstances(BlobIndices.class)) {
+            shard = indices.blobShard(BlobIndices.fullIndexName(INDEX), 0);
+            if (shard != null) {
+                break;
+            }
+        }
+        assertThat(shard, is(notNullValue()));
+        BlobListener listener = mock(BlobListener.class);
+        shard.addListener(listener);
+
+        String digest = "32d10c7b8cf96570ca04ce37f2a19d84240d3a89";
+        put(blobUri(INDEX, digest), "abcdefghijklmnopqrstuvwxyz").close();
+        verify(listener, times(1)).onCommit(digest);
+
+        String digest2 = "c520e6109835c876fd98636efec43dd61634b7d3";
+        put(blobUri(INDEX, digest2), StringUtils.repeat("a", 1500)).close();
+        verify(listener, times(1)).onCommit(digest2);
+
+        delete(blobUri(INDEX, digest)).close();
+        verify(listener, times(1)).onDelete(digest);
+
+        delete(blobUri(INDEX, digest2)).close();
+        verify(listener, times(1)).onDelete(digest2);
+
     }
 }

@@ -22,6 +22,7 @@
 package io.crate;
 
 import io.crate.blob.BlobContainer;
+import io.crate.blob.BlobListener;
 import io.crate.blob.DigestBlob;
 import io.crate.test.integration.CrateUnitTest;
 import org.elasticsearch.common.bytes.BytesArray;
@@ -38,6 +39,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.UUID;
+import java.util.concurrent.CopyOnWriteArrayList;
+
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 
 public class DigestBlobTests extends CrateUnitTest {
 
@@ -86,8 +92,11 @@ public class DigestBlobTests extends CrateUnitTest {
         UUID transferId = UUID.randomUUID();
         int currentPos = 2;
 
+        CopyOnWriteArrayList<BlobListener> listeners = new CopyOnWriteArrayList<>();
+        BlobListener listener = mock(BlobListener.class);
+        listeners.add(listener);
 
-        BlobContainer container = new BlobContainer(tmpDir.toFile());
+        BlobContainer container = new BlobContainer(tmpDir.toFile(), listeners);
         File filePath = new File(container.getTmpDirectory(), String.format("%s.%s", digest, transferId.toString()));
         if (filePath.exists()) {
             filePath.delete();
@@ -116,6 +125,7 @@ public class DigestBlobTests extends CrateUnitTest {
         assertEquals("ABCDEFGHIJKLMNO", new BytesArray(buffer).toUtf8().trim());
 
         File file = digestBlob.commit();
+        verify(listener, times(1)).onCommit(digest);
 
         // check if final file's content is correct
         buffer = new byte[15];
@@ -133,7 +143,12 @@ public class DigestBlobTests extends CrateUnitTest {
     @Test
     public void testResumeDigestBlobAddHeadAfterContent() throws IOException {
         UUID transferId = UUID.randomUUID();
-        BlobContainer container = new BlobContainer(tmpDir.toFile());
+        CopyOnWriteArrayList<BlobListener> listeners = new CopyOnWriteArrayList<>();
+        BlobListener listener = mock(BlobListener.class);
+        listeners.add(listener);
+
+        BlobContainer container = new BlobContainer(tmpDir.toFile(), listeners);
+
         DigestBlob digestBlob = DigestBlob.resumeTransfer(
             container, "417de3231e23dcd6d224ff60918024bc6c59aa58", transferId, 2);
 
@@ -155,6 +170,8 @@ public class DigestBlobTests extends CrateUnitTest {
 
         File file = digestBlob.commit();
 
+        verify(listener, times(1)).onCommit("417de3231e23dcd6d224ff60918024bc6c59aa58");
+
         // check if final file's content is correct
         buffer = new byte[15];
         stream = new FileInputStream(file);
@@ -164,6 +181,7 @@ public class DigestBlobTests extends CrateUnitTest {
 
         // assert file created
         assertTrue(file.exists());
+
         // just in case any references to file left
         assertTrue(file.delete());
     }

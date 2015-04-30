@@ -28,11 +28,15 @@ import org.elasticsearch.index.indexing.ShardIndexingService;
 import org.elasticsearch.index.shard.service.IndexShard;
 import org.elasticsearch.index.store.StoreStats;
 
+import javax.annotation.Nullable;
+
 public class ShardSizeExpression extends SysShardExpression<Long> {
 
     public static final String NAME = "size";
 
     private final IndexShard indexShard;
+
+    @Nullable
     private StoreStats storeStats;
 
     @Inject
@@ -40,6 +44,7 @@ public class ShardSizeExpression extends SysShardExpression<Long> {
         super(NAME);
         this.indexShard = indexShard;
         shardIndexingService.addListener(new IndexingOperationListener() {
+
             private void nullStats() {
                 synchronized (ShardSizeExpression.this.indexShard) {
                     storeStats = null;

@@ -22,6 +22,7 @@
 package io.crate.operation.collect.files;
 
 import io.crate.blob.BlobContainer;
+import io.crate.blob.BlobListener;
 import io.crate.blob.v2.BlobShard;
 import io.crate.core.collections.Bucket;
 import io.crate.operation.Input;
@@ -42,6 +43,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 import static io.crate.testing.TestingHelpers.isRow;
 import static org.hamcrest.Matchers.contains;
@@ -66,7 +68,7 @@ public class BlobDocCollectorTest extends CrateUnitTest {
 
     @Test
     public void testBlobFound() throws Exception {
-        BlobContainer container = new BlobContainer(tmpDir.toFile());
+        BlobContainer container = new BlobContainer(tmpDir.toFile(), new CopyOnWriteArrayList<BlobListener>());
         String digest = "417de3231e23dcd6d224ff60918024bc6c59aa58";
 
         File blob = new File(container.getVarDirectory().getAbsolutePath() + "/01/" + digest);

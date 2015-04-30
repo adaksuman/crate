@@ -170,6 +170,8 @@ public class DigestBlob {
         }
         File newFile = container.getFile(digest);
         file.renameTo(newFile);
+        // call blob listeners
+        container.onCommit(digest);
         return newFile;
     }
 

@@ -23,6 +23,7 @@ package io.crate.blob.v2;
 
 import io.crate.blob.BlobContainer;
 import io.crate.blob.BlobEnvironment;
+import io.crate.blob.BlobListener;
 import io.crate.blob.stats.BlobStats;
 import org.elasticsearch.cluster.routing.ShardRouting;
 import org.elasticsearch.common.inject.Inject;
@@ -33,11 +34,14 @@ import org.elasticsearch.index.shard.ShardId;
 import org.elasticsearch.index.shard.service.IndexShard;
 
 import java.io.File;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 public class BlobShard extends AbstractIndexShardComponent {
 
     private final BlobContainer blobContainer;
     private final IndexShard indexShard;
+
+    private final CopyOnWriteArrayList<BlobListener> listeners = new CopyOnWriteArrayList<>();
 
     @Inject
     protected BlobShard(ShardId shardId, @IndexSettings Settings indexSettings,
@@ -47,7 +51,7 @@ public class BlobShard extends AbstractIndexShardComponent {
         this.indexShard = indexShard;
         File blobDir = blobDir(blobEnvironment);
         logger.info("creating BlobContainer at {}", blobDir);
-        this.blobContainer = new BlobContainer(blobDir);
+        this.blobContainer = new BlobContainer(blobDir, listeners);
     }
 
     public byte[][] currentDigests(byte prefix) {
@@ -55,7 +59,21 @@ public class BlobShard extends AbstractIndexShardComponent {
     }
 
     public boolean delete(String digest) {
-        return blobContainer.getFile(digest).delete();
+        boolean deleted = blobContainer.getFile(digest).delete();
+
+        // call delete listeners
+        for (BlobListener blobListener : listeners) {
+            blobListener.onDelete(digest);
+        }
+        return deleted;
+    }
+
+    public void addListener(BlobListener blobListener) {
+        listeners.add(blobListener);
+    }
+
+    public void removeListener(BlobListener blobListener) {
+        listeners.remove(blobListener);
     }
 
     public BlobContainer blobContainer() {

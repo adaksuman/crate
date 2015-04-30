@@ -35,6 +35,7 @@ import java.io.RandomAccessFile;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 public class BlobContainer {
 
@@ -57,10 +58,14 @@ public class BlobContainer {
     private final File tmpDirectory;
     private final File varDirectory;
 
-    public BlobContainer(File baseDirectory) {
+    private final CopyOnWriteArrayList<BlobListener> listeners;
+
+    public BlobContainer(File baseDirectory, CopyOnWriteArrayList<BlobListener> listeners) {
         this.baseDirectory = baseDirectory;
         this.tmpDirectory = new File(baseDirectory, "tmp");
         this.varDirectory = new File(baseDirectory, "var");
+        this.listeners = listeners;
+
         FileSystemUtils.mkdirs(this.varDirectory);
         FileSystemUtils.mkdirs(this.tmpDirectory);
 
@@ -162,6 +167,17 @@ public class BlobContainer {
     public File getFile(String digest) {
         return new File(getVarDirectory(), digest.substring(0, 2) + File.separator + digest);
     }
+
+    /**
+     * called when a blob got committed, finally stored
+     * @param digest the digest of the blob
+     */
+    protected void onCommit(String digest) {
+        for (BlobListener listener : listeners) {
+            listener.onCommit(digest);
+        }
+    }
+
 
     public DigestBlob createBlob(String digest, UUID transferId) {
         // TODO: check if exists already

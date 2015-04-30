@@ -21,10 +21,14 @@
 
 package io.crate.operation.reference.sys.shard.blob;
 
+import io.crate.blob.BlobListener;
+import io.crate.blob.stats.BlobStats;
 import io.crate.blob.v2.BlobShard;
 import io.crate.metadata.shard.blob.BlobShardReferenceImplementation;
 import io.crate.operation.reference.sys.shard.SysShardExpression;
 import org.elasticsearch.common.inject.Inject;
+
+import javax.annotation.Nullable;
 
 public class BlobShardSizeExpression extends SysShardExpression<Long> implements BlobShardReferenceImplementation {
 
@@ -32,14 +36,40 @@ public class BlobShardSizeExpression extends SysShardExpression<Long> implements
 
     private final BlobShard blobShard;
 
+    @Nullable
+    private BlobStats blobStats;
+
     @Inject
-    public BlobShardSizeExpression(BlobShard blobShard) {
+    public BlobShardSizeExpression(final BlobShard blobShard) {
         super(NAME);
         this.blobShard = blobShard;
+        this.blobShard.addListener(new BlobListener() {
+
+            private void nullBlobStats() {
+                synchronized (blobShard) {
+                    blobStats = null;
+                }
+            }
+
+            @Override
+            public void onCommit(String digest) {
+                nullBlobStats();
+            }
+
+            @Override
+            public void onDelete(String digest) {
+                nullBlobStats();
+            }
+        });
     }
 
     @Override
     public Long value() {
-        return blobShard.blobStats().totalUsage();
+        synchronized (blobShard) {
+            if (blobStats == null) {
+                blobStats = blobShard.blobStats();
+            }
+            return blobStats.totalUsage();
+        }
     }
 }
