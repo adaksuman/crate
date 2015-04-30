@@ -19,7 +19,7 @@
  * software solely pursuant to the terms of the relevant commercial agreement.
  */
 
-package io.crate.operation.reference.sys;
+package io.crate.operation.reference.sys.shards;
 
 import io.crate.metadata.*;
 import io.crate.metadata.shard.MetaDataShardModule;
@@ -46,6 +46,7 @@ import org.elasticsearch.common.inject.ModulesBuilder;
 import org.elasticsearch.common.settings.ImmutableSettings;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.index.Index;
+import org.elasticsearch.index.indexing.ShardIndexingService;
 import org.elasticsearch.index.shard.DocsStats;
 import org.elasticsearch.index.shard.IllegalIndexShardStateException;
 import org.elasticsearch.index.shard.IndexShardState;
@@ -98,6 +99,9 @@ public class SysShardsExpressionsTest extends CrateUnitTest {
 
             IndexShard indexShard = mock(IndexShard.class);
             bind(IndexShard.class).toInstance(indexShard);
+
+            ShardIndexingService shardIndexingService = mock(ShardIndexingService.class);
+            bind(ShardIndexingService.class).toInstance(shardIndexingService);
 
             StoreStats storeStats = mock(StoreStats.class);
             when(indexShard.storeStats()).thenReturn(storeStats);

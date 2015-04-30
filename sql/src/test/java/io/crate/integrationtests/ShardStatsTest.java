@@ -24,12 +24,12 @@ package io.crate.integrationtests;
 import io.crate.blob.v2.BlobIndices;
 import io.crate.test.integration.CrateIntegrationTest;
 import org.elasticsearch.cluster.metadata.IndexMetaData;
+import org.elasticsearch.common.Strings;
 import org.elasticsearch.common.settings.ImmutableSettings;
 import org.elasticsearch.common.settings.Settings;
 import org.junit.Test;
 
-import static org.hamcrest.Matchers.greaterThanOrEqualTo;
-import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.*;
 
 
 @CrateIntegrationTest.ClusterScope(scope = CrateIntegrationTest.Scope.GLOBAL)
@@ -110,5 +110,34 @@ public class ShardStatsTest extends SQLTransportIntegrationTest {
                 "and table_name != 'sbolb'");
         assertThat(response.rowCount(), is(1L));
         assertThat((Long)response.rows()[0][0], is(0L));
+    }
+
+    @Test
+    public void testShardSizeUpdatesAfterInsertUpdateDelete() throws Exception {
+        execute("create table shard_size_t (value string) clustered into 1 shards with (number_of_replicas=0)");
+        ensureGreen(); // sic, wait for all shards to be ready
+        execute("select size from sys.shards where table_name='shard_size_t'");
+        Long initialShardSize = (Long)response.rows()[0][0];
+        execute("select size from sys.shards where table_name='shard_size_t'");
+        assertThat((Long) response.rows()[0][0], is(initialShardSize)); // not changed
+
+        execute("insert into shard_size_t values (?)", new Object[]{Strings.base64UUID()});
+        execute("refresh table shard_size_t");
+        execute("select size from sys.shards where table_name='shard_size_t'");
+        Long afterInsert = (Long) response.rows()[0][0];
+        assertThat(afterInsert, is(greaterThan(initialShardSize))); // bigger
+
+
+        execute("update shard_size_t set value=?", new Object[]{randomAsciiOfLength(10000)});
+        execute("refresh table shard_size_t");
+        execute("select size from sys.shards where table_name='shard_size_t'");
+        Long afterUpdate = (Long) response.rows()[0][0];
+        assertThat(afterUpdate, is(greaterThan(afterInsert))); // bigger
+
+        execute("delete from shard_size_t");
+        execute("refresh table shard_size_t");
+        execute("select size from sys.shards where table_name='shard_size_t'");
+        Long afterDelete = (Long) response.rows()[0][0];
+        assertThat(afterDelete, is(initialShardSize));
     }
 }

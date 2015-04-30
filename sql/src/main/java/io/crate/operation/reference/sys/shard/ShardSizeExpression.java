@@ -22,23 +22,60 @@
 package io.crate.operation.reference.sys.shard;
 
 import org.elasticsearch.common.inject.Inject;
+import org.elasticsearch.index.engine.Engine;
+import org.elasticsearch.index.indexing.IndexingOperationListener;
+import org.elasticsearch.index.indexing.ShardIndexingService;
 import org.elasticsearch.index.shard.service.IndexShard;
+import org.elasticsearch.index.store.StoreStats;
 
 public class ShardSizeExpression extends SysShardExpression<Long> {
 
     public static final String NAME = "size";
 
     private final IndexShard indexShard;
+    private StoreStats storeStats;
 
     @Inject
-    public ShardSizeExpression(IndexShard indexShard) {
+    public ShardSizeExpression(IndexShard indexShard, ShardIndexingService shardIndexingService) {
         super(NAME);
         this.indexShard = indexShard;
+        shardIndexingService.addListener(new IndexingOperationListener() {
+            private void nullStats() {
+                synchronized (ShardSizeExpression.this.indexShard) {
+                    storeStats = null;
+                }
+            }
+
+            @Override
+            public void postIndex(Engine.Index index) {
+                nullStats();
+            }
+
+            @Override
+            public void postDelete(Engine.Delete delete) {
+                nullStats();
+            }
+
+            @Override
+            public void postCreate(Engine.Create create) {
+                nullStats();
+            }
+
+            @Override
+            public void postDeleteByQuery(Engine.DeleteByQuery deleteByQuery) {
+                nullStats();
+            }
+        });
     }
 
     @Override
     public Long value() {
-        return indexShard.storeStats().getSizeInBytes();
+        synchronized (indexShard) {
+            if (storeStats == null) {
+                storeStats = indexShard.storeStats();
+            }
+            return storeStats.getSizeInBytes();
+        }
     }
 
 }
